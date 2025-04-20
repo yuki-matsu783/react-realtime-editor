@@ -1,6 +1,13 @@
 import React, { useState } from "react";
 import Editor from "@monaco-editor/react";
 
+// Extend the Window interface to include showDirectoryPicker
+declare global {
+    interface Window {
+        showDirectoryPicker: () => Promise<any>;
+    }
+}
+
 interface FileEntry {
     handle: any;
     path: string;
@@ -70,6 +77,9 @@ export default function LLMFileEditor() {
     const loadFile = async (path: string) => {
         try {
             const entry = fileEntries[path];
+            if (!entry) {
+                return;
+            }
             const file = await entry.handle.getFile();
             const text = await file.text();
 
@@ -113,22 +123,18 @@ export default function LLMFileEditor() {
                 </div>
             )}
 
-            <div className="flex-1 min-h-0">
+            <div>
                 <Editor
-                    height="100%"
-                    defaultLanguage="javascript"
+                    height="75vh"
+                    width="100%"
+                    defaultLanguage="typescript"
                     value={code}
                     onChange={(value) => setCode(value || "")}
                     theme="vs-dark"
-                    options={{
-                        minimap: { enabled: true },
-                        scrollBeyondLastLine: false,
-                        wordWrap: 'on'
-                    }}
                 />
             </div>
 
-            <div className="bg-gray-100 text-sm p-2 h-40 overflow-auto">
+            <div className="bg-gray-100 text-sm p-2 h-32">
                 {logs.map((line, i) => (
                     <div key={i}>{line}</div>
                 ))}
