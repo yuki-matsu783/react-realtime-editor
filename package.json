@@ -20,6 +20,7 @@
     "monaco-editor": "^0.52.2",
     "rc-tree": "^5.13.1",
     "react": "^19.0.0",
+    "react-arborist": "^3.4.3",
     "react-dom": "^19.0.0",
     "react-live": "^4.1.8"
   },

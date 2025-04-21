@@ -1,11 +1,8 @@
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
-import Tree from 'rc-tree';
-import 'rc-tree/assets/index.css';
-import { DataNode, Key } from "rc-tree/lib/interface";
+import { Tree } from "react-arborist";
 import { useFileExplorer } from "../contexts/FileExplorerContext";
 
-// Extend the Window interface to include showDirectoryPicker
 declare global {
     interface Window {
         showDirectoryPicker: () => Promise<any>;
@@ -20,6 +17,13 @@ interface FileEntry {
     children?: Record<string, FileEntry>;
 }
 
+interface TreeNode {
+    id: string;
+    name: string;
+    type: 'file' | 'directory';
+    children?: TreeNode[];
+}
+
 const isTextFile = async (fileHandle: any) => {
     try {
         const file = await fileHandle.getFile();
@@ -30,35 +34,34 @@ const isTextFile = async (fileHandle: any) => {
     }
 };
 
-// ファイル拡張子から言語を特定する関数
 const getLanguageFromFileName = (filename: string): string => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const languageMap: Record<string, string> = {
-        'js': 'javascript',
-        'jsx': 'javascript',
-        'ts': 'typescript',
-        'tsx': 'typescript',
-        'html': 'html',
-        'css': 'css',
-        'json': 'json',
-        'md': 'markdown',
-        'py': 'python',
-        'java': 'java',
-        'c': 'c',
-        'cpp': 'cpp',
-        'h': 'cpp',
-        'hpp': 'cpp',
-        'rs': 'rust',
-        'go': 'go',
-        'rb': 'ruby',
-        'php': 'php',
-        'sql': 'sql',
-        'yaml': 'yaml',
-        'yml': 'yaml',
-        'xml': 'xml',
-        'sh': 'shell',
-        'bash': 'shell',
-        'zsh': 'shell',
+        js: 'javascript',
+        jsx: 'javascript',
+        ts: 'typescript',
+        tsx: 'typescript',
+        html: 'html',
+        css: 'css',
+        json: 'json',
+        md: 'markdown',
+        py: 'python',
+        java: 'java',
+        c: 'c',
+        cpp: 'cpp',
+        h: 'cpp',
+        hpp: 'cpp',
+        rs: 'rust',
+        go: 'go',
+        rb: 'ruby',
+        php: 'php',
+        sql: 'sql',
+        yaml: 'yaml',
+        yml: 'yaml',
+        xml: 'xml',
+        sh: 'shell',
+        bash: 'shell',
+        zsh: 'shell',
     };
     return languageMap[ext] || 'plaintext';
 };
@@ -69,9 +72,7 @@ export default function FileExplorer() {
 
     const log = (msg: string) => setLogs((prev) => [...prev, msg]);
 
-    // エディタが読み込まれる前の設定
     const handleEditorBeforeMount = (monaco: any) => {
-        // 全ての言語でシンタックスチェックを無効化
         monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
             noSemanticValidation: true,
             noSyntaxValidation: true,
@@ -86,14 +87,15 @@ export default function FileExplorer() {
         setSelectedFile({
             ...selectedFile,
             code: value || "",
-            isModified: true
+            isModified: true,
         });
     };
 
     const scanDirectory = async (dirHandle: any, path = ""): Promise<Record<string, FileEntry>> => {
         const entries: Record<string, FileEntry> = {};
-        
         for await (const [name, entry] of dirHandle.entries()) {
+            if (name.startsWith(".")) continue;
+
             const fullPath = path ? `${path}/${name}` : name;
 
             if (entry.kind === "file") {
@@ -101,8 +103,8 @@ export default function FileExplorer() {
                     entries[fullPath] = {
                         handle: entry,
                         path: fullPath,
-                        type: 'file',
-                        name
+                        type: "file",
+                        name,
                     };
                 }
             } else if (entry.kind === "directory") {
@@ -110,21 +112,30 @@ export default function FileExplorer() {
                 entries[fullPath] = {
                     handle: entry,
                     path: fullPath,
-                    type: 'directory',
+                    type: "directory",
                     name,
-                    children: subEntries
+                    children: subEntries,
                 };
             }
         }
-
         return entries;
+    };
+
+    const findEntryByPath = (entries: Record<string, FileEntry>, path: string): FileEntry | null => {
+        for (const entry of Object.values(entries)) {
+            if (entry.path === path) return entry;
+            if (entry.type === "directory" && entry.children) {
+                const found = findEntryByPath(entry.children, path);
+                if (found) return found;
+            }
+        }
+        return null;
     };
 
     const handleDirectoryPick = async () => {
         try {
             const handle = await window.showDirectoryPicker();
             log("✅ ディレクトリ選択完了");
-
             const entries = await scanDirectory(handle);
             setFileEntries(entries);
         } catch (e: any) {
@@ -135,9 +146,8 @@ export default function FileExplorer() {
     const loadFile = async (path: string) => {
         try {
             const entry = fileEntries[path];
-            if (!entry || entry.type !== 'file') {
-                return;
-            }
+            if (!entry || entry.type !== "file") return;
+
             const file = await entry.handle.getFile();
             const text = await file.text();
 
@@ -145,7 +155,7 @@ export default function FileExplorer() {
                 filename: path,
                 code: text,
                 language: getLanguageFromFileName(path),
-                isModified: false
+                isModified: false,
             });
             log(`📄 ${path} を読み込みました (${text.length}文字)`);
         } catch (e: any) {
@@ -155,57 +165,47 @@ export default function FileExplorer() {
 
     const saveFile = async () => {
         try {
-            if (!selectedFile.filename || !fileEntries[selectedFile.filename]) {
-                return;
-            }
+            if (!selectedFile.filename || !fileEntries[selectedFile.filename]) return;
 
             const entry = fileEntries[selectedFile.filename];
             const writable = await entry.handle.createWritable();
             await writable.write(selectedFile.code);
             await writable.close();
-            
-            setSelectedFile({
-                ...selectedFile,
-                isModified: false
-            });
+
+            setSelectedFile({ ...selectedFile, isModified: false });
             log(`💾 ${selectedFile.filename} を保存しました`);
         } catch (e: any) {
             log(`❌ 保存エラー: ${e.message}`);
         }
     };
 
-    const convertToTreeData = (entries: Record<string, FileEntry>, parentPath = ""): DataNode[] => {
-        return Object.entries(entries)
-            .filter(([path]) => {
-                // 親パスで始まるエントリーのみをフィルタリング
-                if (!parentPath) {
-                    return !path.includes('/'); // ルートレベルのエントリーのみ
-                }
-                return path.startsWith(parentPath + '/') && 
-                       path.split('/').length === parentPath.split('/').length + 1;
-            })
-            .map(([path, entry]) => ({
-                key: path,
-                title: entry.name,
-                isLeaf: entry.type === 'file',
-                children: entry.type === 'directory' ? convertToTreeData(entries, path) : undefined
-            }));
+    const convertToTreeData = (entries: Record<string, FileEntry>): TreeNode[] => {
+        const buildTree = (entry: FileEntry): TreeNode => {
+            const node: TreeNode = {
+                id: entry.path,
+                name: entry.name,
+                type: entry.type,
+            };
+            if (entry.type === "directory" && entry.children) {
+                node.children = Object.values(entry.children).map(buildTree);
+            }
+            return node;
+        };
+        return Object.values(entries)
+            .filter((entry) => !entry.path.includes("/"))
+            .map(buildTree);
     };
 
-    const handleSelect = (_selectedKeys: Key[], info: { selectedNodes: DataNode[] }) => {
-        const selectedNode = info.selectedNodes[0];
-        if (selectedNode) {
-            const path = selectedNode.key as string;
-            const entry = fileEntries[path];
-            if (entry && entry.type === 'file') {
-                loadFile(path);
-            }
+    const handleNodeClick = (node: any) => {
+        const entry = findEntryByPath(fileEntries, node.id);
+        if (entry?.type === "file") {
+            loadFile(entry.path);
         }
     };
 
     return (
-        <div className="p-4 h-screen flex flex-col">
-            <div className="flex gap-2 mb-4">
+        <div className="h-screen flex flex-col">
+            <div className="flex gap-2 p-4 border-b">
                 <button
                     onClick={handleDirectoryPick}
                     className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -216,8 +216,8 @@ export default function FileExplorer() {
                     <button
                         onClick={saveFile}
                         className={`px-4 py-2 rounded ${
-                            selectedFile.isModified 
-                                ? "bg-green-600 text-white" 
+                            selectedFile.isModified
+                                ? "bg-green-600 text-white"
                                 : "bg-gray-300 text-gray-600"
                         }`}
                         disabled={!selectedFile.isModified}
@@ -227,24 +227,46 @@ export default function FileExplorer() {
                 )}
             </div>
 
-            <div className="flex flex-1 gap-4">
-                <div className="w-64 border rounded">
+            <div className="flex flex-1 overflow-hidden">
+                <div className="w-64 border-r overflow-y-auto p-2">
                     {Object.keys(fileEntries).length > 0 && (
-                        <div className="h-full overflow-y-auto p-2">
-                            <Tree
-                                treeData={convertToTreeData(fileEntries)}
-                                onSelect={handleSelect}
-                                defaultExpandAll
-                            />
-                        </div>
+                        <Tree
+                            data={convertToTreeData(fileEntries)}
+                            openByDefault={false}
+                            width={240}
+                            height={600}
+                            onActivate={(node) => {
+                                const { type } = node.data;
+                                if (type === "directory") {
+                                    node.toggle();
+                                } else {
+                                    handleNodeClick(node.data);
+                                }
+                            }}
+                        >
+                            {({ node, style, dragHandle }) => (
+                                <div
+                                    style={style}
+                                    ref={dragHandle}
+                                    className="flex items-center gap-2 py-1 cursor-pointer"
+                                >
+                                    <span>{node.data.type === "file" ? "📄" : node.isOpen ? "📂" : "📁"}</span>
+                                    <span className="truncate max-w-[180px] text-sm" title={node.data.name}>
+                                        {node.data.name}
+                                    </span>
+                                </div>
+                            )}
+                        </Tree>
                     )}
                 </div>
 
-                <div className="flex-1 flex flex-col">
+                <div className="flex-1 flex flex-col p-4">
                     {selectedFile.filename && (
                         <div className="text-sm mb-2">
                             📄 現在のファイル: {selectedFile.filename} ({selectedFile.code.length}文字)
-                            {selectedFile.isModified && <span className="text-yellow-600 ml-2">●</span>}
+                            {selectedFile.isModified && (
+                                <span className="text-yellow-600 ml-2">●</span>
+                            )}
                         </div>
                     )}
 
@@ -262,7 +284,7 @@ export default function FileExplorer() {
                                 scrollBeyondLastLine: false,
                                 formatOnPaste: true,
                                 formatOnType: true,
-                                renderValidationDecorations: "off"
+                                renderValidationDecorations: "off",
                             }}
                         />
                     </div>
