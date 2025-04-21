@@ -3,6 +3,7 @@ import Editor from "@monaco-editor/react";
 import Tree from 'rc-tree';
 import 'rc-tree/assets/index.css';
 import { DataNode, Key } from "rc-tree/lib/interface";
+import { useFileExplorer } from "../contexts/FileExplorerContext";
 
 // Extend the Window interface to include showDirectoryPicker
 declare global {
@@ -63,12 +64,8 @@ const getLanguageFromFileName = (filename: string): string => {
 };
 
 export default function FileExplorer() {
-    const [fileEntries, setFileEntries] = useState<Record<string, FileEntry>>({});
-    const [filename, setFilename] = useState<string>("");
-    const [code, setCode] = useState<string>("");
-    const [language, setLanguage] = useState<string>("plaintext");
+    const { fileEntries, setFileEntries, selectedFile, setSelectedFile } = useFileExplorer();
     const [logs, setLogs] = useState<string[]>([]);
-    const [isModified, setIsModified] = useState<boolean>(false);
 
     const log = (msg: string) => setLogs((prev) => [...prev, msg]);
 
@@ -86,8 +83,11 @@ export default function FileExplorer() {
     };
 
     const handleEditorChange = (value: string | undefined) => {
-        setCode(value || "");
-        setIsModified(true);
+        setSelectedFile({
+            ...selectedFile,
+            code: value || "",
+            isModified: true
+        });
     };
 
     const scanDirectory = async (dirHandle: any, path = ""): Promise<Record<string, FileEntry>> => {
@@ -141,10 +141,12 @@ export default function FileExplorer() {
             const file = await entry.handle.getFile();
             const text = await file.text();
 
-            setFilename(path);
-            setCode(text);
-            setLanguage(getLanguageFromFileName(path));
-            setIsModified(false);
+            setSelectedFile({
+                filename: path,
+                code: text,
+                language: getLanguageFromFileName(path),
+                isModified: false
+            });
             log(`📄 ${path} を読み込みました (${text.length}文字)`);
         } catch (e: any) {
             log(`❌ ファイル読み込みエラー: ${e.message}`);
@@ -153,17 +155,20 @@ export default function FileExplorer() {
 
     const saveFile = async () => {
         try {
-            if (!filename || !fileEntries[filename]) {
+            if (!selectedFile.filename || !fileEntries[selectedFile.filename]) {
                 return;
             }
 
-            const entry = fileEntries[filename];
+            const entry = fileEntries[selectedFile.filename];
             const writable = await entry.handle.createWritable();
-            await writable.write(code);
+            await writable.write(selectedFile.code);
             await writable.close();
             
-            setIsModified(false);
-            log(`💾 ${filename} を保存しました`);
+            setSelectedFile({
+                ...selectedFile,
+                isModified: false
+            });
+            log(`💾 ${selectedFile.filename} を保存しました`);
         } catch (e: any) {
             log(`❌ 保存エラー: ${e.message}`);
         }
@@ -207,15 +212,15 @@ export default function FileExplorer() {
                 >
                     ディレクトリを選択
                 </button>
-                {filename && (
+                {selectedFile.filename && (
                     <button
                         onClick={saveFile}
                         className={`px-4 py-2 rounded ${
-                            isModified 
+                            selectedFile.isModified 
                                 ? "bg-green-600 text-white" 
                                 : "bg-gray-300 text-gray-600"
                         }`}
-                        disabled={!isModified}
+                        disabled={!selectedFile.isModified}
                     >
                         保存
                     </button>
@@ -236,10 +241,10 @@ export default function FileExplorer() {
                 </div>
 
                 <div className="flex-1 flex flex-col">
-                    {filename && (
+                    {selectedFile.filename && (
                         <div className="text-sm mb-2">
-                            📄 現在のファイル: {filename} ({code.length}文字)
-                            {isModified && <span className="text-yellow-600 ml-2">●</span>}
+                            📄 現在のファイル: {selectedFile.filename} ({selectedFile.code.length}文字)
+                            {selectedFile.isModified && <span className="text-yellow-600 ml-2">●</span>}
                         </div>
                     )}
 
@@ -247,8 +252,8 @@ export default function FileExplorer() {
                         <Editor
                             height="75vh"
                             width="100%"
-                            language={language}
-                            value={code}
+                            language={selectedFile.language}
+                            value={selectedFile.code}
                             onChange={handleEditorChange}
                             theme="vs-dark"
                             beforeMount={handleEditorBeforeMount}

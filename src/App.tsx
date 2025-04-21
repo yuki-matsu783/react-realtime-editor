@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Box, Tabs, Tab } from '@mui/material';
 import FileExplorer from './components/FileExplorer';
+import { FileExplorerProvider } from './contexts/FileExplorerContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -27,37 +28,39 @@ function TabPanel(props: TabPanelProps) {
 const App: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
 
-  const handleChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
   return (
-    <Box sx={{ width: '100%' }}>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs value={tabValue} onChange={handleChange}>
-          <Tab label="File Explorer" />
-          <Tab label="Preview" />
-        </Tabs>
+    <FileExplorerProvider>
+      <Box sx={{ width: '100%' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={tabValue} onChange={handleChange}>
+            <Tab label="File Explorer" />
+            <Tab label="view" />
+          </Tabs>
+        </Box>
+        <TabPanel value={tabValue} index={0}>
+          <Box p={2}>
+            <FileExplorer />
+          </Box>
+        </TabPanel>
+        <TabPanel value={tabValue} index={1}>
+          <Box p={2} sx={{ height: 'calc(100vh - 100px)' }}>
+            <iframe 
+              src="http://localhost:5174" 
+              style={{
+                width: '100%',
+                height: '100%',
+                border: '1px solid #ccc',
+                borderRadius: '4px'
+              }}
+            />
+          </Box>
+        </TabPanel>
       </Box>
-      <TabPanel value={tabValue} index={0}>
-        <Box p={2}>
-          <FileExplorer />
-        </Box>
-      </TabPanel>
-      <TabPanel value={tabValue} index={1}>
-        <Box p={2} sx={{ height: 'calc(100vh - 100px)' }}>
-          <iframe 
-            src="http://localhost:5174" 
-            style={{
-              width: '100%',
-              height: '100%',
-              border: '1px solid #ccc',
-              borderRadius: '4px'
-            }}
-          />
-        </Box>
-      </TabPanel>
-    </Box>
+    </FileExplorerProvider>
   );
 };
 
