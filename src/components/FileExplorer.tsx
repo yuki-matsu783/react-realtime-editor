@@ -124,16 +124,16 @@ export default function FileExplorer() {
         });
     };
 
-    const loadGitignore = async (dirHandle: any, basePath: string = '') => {
+    const loadGitignore = async (dirHandle: any) => {
         try {
             const gitignoreHandle = await dirHandle.getFileHandle('.gitignore');
             const file = await gitignoreHandle.getFile();
             const content = await file.text();
             // 空行とコメント行を除外し、パターンを配列として保存
-            const patterns = content
+            const patterns: string[] = content
                 .split('\n')
-                .map(line => line.trim())
-                .filter(line => line && !line.startsWith('#'));
+                .map((line: string): string => line.trim())
+                .filter((line: string): boolean => !!line && !line.startsWith('#'));
             setGitignorePatterns(patterns);
         } catch (error) {
             // .gitignoreファイルが存在しない場合は無視
@@ -173,7 +173,7 @@ export default function FileExplorer() {
                 };
 
                 // サブディレクトリ内の.gitignoreも読み込む
-                await loadGitignore(entry, fullPath);
+                await loadGitignore(entry);
             }
         }
         return entries;
