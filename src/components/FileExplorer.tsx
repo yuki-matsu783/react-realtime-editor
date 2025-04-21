@@ -62,12 +62,13 @@ const getLanguageFromFileName = (filename: string): string => {
     return languageMap[ext] || 'plaintext';
 };
 
-export default function LLMFileEditor() {
+export default function FileExplorer() {
     const [fileEntries, setFileEntries] = useState<Record<string, FileEntry>>({});
     const [filename, setFilename] = useState<string>("");
     const [code, setCode] = useState<string>("");
     const [language, setLanguage] = useState<string>("plaintext");
     const [logs, setLogs] = useState<string[]>([]);
+    const [isModified, setIsModified] = useState<boolean>(false);
 
     const log = (msg: string) => setLogs((prev) => [...prev, msg]);
 
@@ -82,6 +83,11 @@ export default function LLMFileEditor() {
             noSemanticValidation: true,
             noSyntaxValidation: true,
         });
+    };
+
+    const handleEditorChange = (value: string | undefined) => {
+        setCode(value || "");
+        setIsModified(true);
     };
 
     const scanDirectory = async (dirHandle: any, path = ""): Promise<Record<string, FileEntry>> => {
@@ -138,9 +144,28 @@ export default function LLMFileEditor() {
             setFilename(path);
             setCode(text);
             setLanguage(getLanguageFromFileName(path));
+            setIsModified(false);
             log(`📄 ${path} を読み込みました (${text.length}文字)`);
         } catch (e: any) {
             log(`❌ ファイル読み込みエラー: ${e.message}`);
+        }
+    };
+
+    const saveFile = async () => {
+        try {
+            if (!filename || !fileEntries[filename]) {
+                return;
+            }
+
+            const entry = fileEntries[filename];
+            const writable = await entry.handle.createWritable();
+            await writable.write(code);
+            await writable.close();
+            
+            setIsModified(false);
+            log(`💾 ${filename} を保存しました`);
+        } catch (e: any) {
+            log(`❌ 保存エラー: ${e.message}`);
         }
     };
 
@@ -182,6 +207,19 @@ export default function LLMFileEditor() {
                 >
                     ディレクトリを選択
                 </button>
+                {filename && (
+                    <button
+                        onClick={saveFile}
+                        className={`px-4 py-2 rounded ${
+                            isModified 
+                                ? "bg-green-600 text-white" 
+                                : "bg-gray-300 text-gray-600"
+                        }`}
+                        disabled={!isModified}
+                    >
+                        保存
+                    </button>
+                )}
             </div>
 
             <div className="flex flex-1 gap-4">
@@ -201,6 +239,7 @@ export default function LLMFileEditor() {
                     {filename && (
                         <div className="text-sm mb-2">
                             📄 現在のファイル: {filename} ({code.length}文字)
+                            {isModified && <span className="text-yellow-600 ml-2">●</span>}
                         </div>
                     )}
 
@@ -210,7 +249,7 @@ export default function LLMFileEditor() {
                             width="100%"
                             language={language}
                             value={code}
-                            onChange={(value) => setCode(value || "")}
+                            onChange={handleEditorChange}
                             theme="vs-dark"
                             beforeMount={handleEditorBeforeMount}
                             options={{

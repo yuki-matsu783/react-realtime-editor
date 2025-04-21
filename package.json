@@ -21,11 +21,12 @@
     "rc-tree": "^5.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-live": "^4.1.8",
-    "react-treebeard": "^3.2.4"
+    "react-live": "^4.1.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react-swc": "^3.8.0",
     "eslint": "^9.22.0",
     "eslint-plugin-react-hooks": "^5.2.0",
