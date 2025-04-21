@@ -18,9 +18,11 @@
     "@vitejs/plugin-react": "^4.4.0",
     "esbuild-wasm": "^0.25.2",
     "monaco-editor": "^0.52.2",
+    "rc-tree": "^5.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-live": "^4.1.8"
+    "react-live": "^4.1.8",
+    "react-treebeard": "^3.2.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
