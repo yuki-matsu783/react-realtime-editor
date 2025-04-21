@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
+import ignore from 'ignore';
 
 interface FileEntry {
     handle: any;
@@ -23,7 +24,6 @@ interface FileExplorerContextType {
         language: string;
         isModified: boolean;
     }) => void;
-    // 編集中のファイル情報を保持するための新しいstate
     editedFiles: Record<string, {
         code: string;
         language: string;
@@ -34,6 +34,9 @@ interface FileExplorerContextType {
         language: string;
         isModified: boolean;
     }>) => void;
+    gitignorePatterns: string[];
+    setGitignorePatterns: (patterns: string[]) => void;
+    isIgnored: (path: string) => boolean;
 }
 
 const FileExplorerContext = createContext<FileExplorerContextType | undefined>(undefined);
@@ -51,6 +54,13 @@ export function FileExplorerProvider({ children }: { children: ReactNode }) {
         language: string;
         isModified: boolean;
     }>>({});
+    const [gitignorePatterns, setGitignorePatterns] = useState<string[]>([]);
+
+    // gitignoreパターンに基づいてファイルやディレクトリを無視するかどうかを判定
+    const isIgnored = (path: string): boolean => {
+        const ig = ignore().add(gitignorePatterns);
+        return ig.ignores(path);
+    };
 
     return (
         <FileExplorerContext.Provider value={{
@@ -59,7 +69,10 @@ export function FileExplorerProvider({ children }: { children: ReactNode }) {
             selectedFile,
             setSelectedFile,
             editedFiles,
-            setEditedFiles
+            setEditedFiles,
+            gitignorePatterns,
+            setGitignorePatterns,
+            isIgnored
         }}>
             {children}
         </FileExplorerContext.Provider>

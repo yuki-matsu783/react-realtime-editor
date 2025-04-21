@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { Tree } from "react-arborist";
-import { Button, Box } from "@mui/material";
+import { Button, Box, IconButton, Tooltip } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { useFileExplorer } from "../contexts/FileExplorerContext";
 
 declare global {
@@ -70,7 +72,7 @@ const getLanguageFromFileName = (filename: string): string => {
 };
 
 export default function FileExplorer() {
-    const { fileEntries, setFileEntries, selectedFile, setSelectedFile, editedFiles, setEditedFiles } = useFileExplorer();
+    const { fileEntries, setFileEntries, selectedFile, setSelectedFile, editedFiles, setEditedFiles, setGitignorePatterns, isIgnored } = useFileExplorer();
     const [logs, setLogs] = useState<string[]>([]);
     const [treeSize, setTreeSize] = useState({ width: 0, height: 0 });
     const treeContainerRef = useRef<HTMLDivElement>(null);
@@ -122,12 +124,34 @@ export default function FileExplorer() {
         });
     };
 
+    const loadGitignore = async (dirHandle: any, basePath: string = '') => {
+        try {
+            const gitignoreHandle = await dirHandle.getFileHandle('.gitignore');
+            const file = await gitignoreHandle.getFile();
+            const content = await file.text();
+            // 空行とコメント行を除外し、パターンを配列として保存
+            const patterns = content
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line && !line.startsWith('#'));
+            setGitignorePatterns(patterns);
+        } catch (error) {
+            // .gitignoreファイルが存在しない場合は無視
+            console.log('No .gitignore file found');
+        }
+    };
+
     const scanDirectory = async (dirHandle: any, path = ""): Promise<Record<string, FileEntry>> => {
         const entries: Record<string, FileEntry> = {};
         for await (const [name, entry] of dirHandle.entries()) {
             if (name.startsWith(".")) continue;
 
             const fullPath = path ? `${path}/${name}` : name;
+
+            // .gitignoreパターンに一致する場合はスキップ
+            if (isIgnored(fullPath)) {
+                continue;
+            }
 
             if (entry.kind === "file") {
                 if (await isTextFile(entry)) {
@@ -147,6 +171,9 @@ export default function FileExplorer() {
                     name,
                     children: subEntries,
                 };
+
+                // サブディレクトリ内の.gitignoreも読み込む
+                await loadGitignore(entry, fullPath);
             }
         }
         return entries;
@@ -167,10 +194,119 @@ export default function FileExplorer() {
         try {
             const handle = await window.showDirectoryPicker();
             log("✅ ディレクトリ選択完了");
+            await loadGitignore(handle);
             const entries = await scanDirectory(handle);
             setFileEntries(entries);
         } catch (e: any) {
             log(`❌ エラー: ${e.message}`);
+        }
+    };
+
+    const handleAddFile = async () => {
+        try {
+            if (!selectedFile.filename) return;
+
+            const currentDir = selectedFile.filename.split('/').slice(0, -1).join('/');
+            const basePath = currentDir || '';
+            
+            // ファイル名を標準入力で取得（実際のアプリケーションではダイアログを使用することを推奨）
+            const fileName = prompt('新しいファイル名を入力してください:');
+            if (!fileName) return;
+
+            const fullPath = basePath ? `${basePath}/${fileName}` : fileName;
+            const parentEntry = basePath 
+                ? findEntryByPath(fileEntries, basePath)
+                : null;
+
+            if (basePath && (!parentEntry || parentEntry.type !== 'directory')) {
+                log(`❌ 親ディレクトリが見つかりません: ${basePath}`);
+                return;
+            }
+
+            const dirHandle = parentEntry ? parentEntry.handle : await window.showDirectoryPicker();
+            const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+
+            // 新しいファイルエントリを作成
+            const newEntry: FileEntry = {
+                handle: fileHandle,
+                path: fullPath,
+                type: 'file',
+                name: fileName,
+            };
+
+            // fileEntriesを更新
+            const newFileEntries = { ...fileEntries };
+            if (parentEntry && parentEntry.type === 'directory') {
+                if (!parentEntry.children) parentEntry.children = {};
+                parentEntry.children[fileName] = newEntry;
+            } else {
+                newFileEntries[fileName] = newEntry;
+            }
+
+            setFileEntries(newFileEntries);
+            log(`✅ ファイルを作成しました: ${fullPath}`);
+
+            // 新しいファイルを選択
+            setSelectedFile({
+                filename: fullPath,
+                code: '',
+                language: getLanguageFromFileName(fileName),
+                isModified: false,
+            });
+        } catch (e: any) {
+            log(`❌ ファイル作成エラー: ${e.message}`);
+        }
+    };
+
+    const handleDeleteFile = async () => {
+        try {
+            if (!selectedFile.filename) return;
+            
+            if (!confirm(`${selectedFile.filename} を削除してもよろしいですか？`)) {
+                return;
+            }
+
+            const entry = findEntryByPath(fileEntries, selectedFile.filename);
+            if (!entry || entry.type !== 'file') {
+                log(`❌ ファイルが見つかりません: ${selectedFile.filename}`);
+                return;
+            }
+
+            // ファイルを削除
+            await entry.handle.remove();
+
+            // fileEntriesから削除
+            const newFileEntries = { ...fileEntries };
+            const pathParts = selectedFile.filename.split('/');
+            const fileName = pathParts.pop()!;
+            const parentPath = pathParts.join('/');
+
+            if (parentPath) {
+                const parentEntry = findEntryByPath(newFileEntries, parentPath);
+                if (parentEntry && parentEntry.type === 'directory' && parentEntry.children) {
+                    delete parentEntry.children[fileName];
+                }
+            } else {
+                delete newFileEntries[fileName];
+            }
+
+            setFileEntries(newFileEntries);
+            log(`✅ ファイルを削除しました: ${selectedFile.filename}`);
+
+            // 選択を解除
+            setSelectedFile({
+                filename: '',
+                code: '',
+                language: 'plaintext',
+                isModified: false,
+            });
+
+            // 編集情報も削除
+            const newEditedFiles = { ...editedFiles };
+            delete newEditedFiles[selectedFile.filename];
+            setEditedFiles(newEditedFiles);
+        } catch (e: any) {
+            log(`❌ ファイル削除エラー: ${e.message}`);
         }
     };
 
@@ -265,29 +401,47 @@ export default function FileExplorer() {
     };
 
     const convertToTreeData = (entries: Record<string, FileEntry>): TreeNode[] => {
-        const buildTree = (entry: FileEntry): TreeNode => {
-            const node: TreeNode = {
-                id: entry.path,
-                name: entry.name,
-                type: entry.type,
-            };
+        const buildTree = (entry: FileEntry): TreeNode | null => {
+            // ディレクトリの場合、子要素を確認
             if (entry.type === "directory" && entry.children) {
-                // ディレクトリの子要素もソート
-                node.children = Object.values(entry.children)
+                // 子要素をビルドして、nullでないものだけを残す
+                const children = Object.values(entry.children)
                     .sort((a, b) => {
-                        // まずディレクトリとファイルで分ける
                         if (a.type !== b.type) {
                             return a.type === "directory" ? -1 : 1;
                         }
-                        // 同じタイプ同士なら名前でソート
                         return a.name.localeCompare(b.name);
                     })
-                    .map(buildTree);
+                    .map(buildTree)
+                    .filter((node): node is TreeNode => node !== null);
+
+                // 子要素が1つもない場合はnullを返す（このディレクトリは表示しない）
+                if (children.length === 0) {
+                    return null;
+                }
+
+                // 子要素がある場合はディレクトリノードを返す
+                return {
+                    id: entry.path,
+                    name: entry.name,
+                    type: entry.type,
+                    children
+                };
             }
-            return node;
+
+            // ファイルの場合は通常通りノードを返す
+            if (entry.type === "file") {
+                return {
+                    id: entry.path,
+                    name: entry.name,
+                    type: entry.type
+                };
+            }
+
+            return null;
         };
         
-        // ルートレベルのエントリをソート
+        // ルートレベルのエントリをソートしてビルド
         return Object.values(entries)
             .filter((entry) => !entry.path.includes("/"))
             .sort((a, b) => {
@@ -296,7 +450,8 @@ export default function FileExplorer() {
                 }
                 return a.name.localeCompare(b.name);
             })
-            .map(buildTree);
+            .map(buildTree)
+            .filter((node): node is TreeNode => node !== null);
     };
 
     const handleNodeClick = (node: any) => {
@@ -316,15 +471,37 @@ export default function FileExplorer() {
                 >
                     ディレクトリを選択
                 </Button>
-                {selectedFile.filename && (
-                    <Button
-                        onClick={saveFile}
-                        variant={selectedFile.isModified ? "contained" : "outlined"}
-                        color={selectedFile.isModified ? "success" : "inherit"}
-                        disabled={!selectedFile.isModified}
-                    >
-                        保存
-                    </Button>
+                {Object.keys(fileEntries).length > 0 && (
+                    <>
+                            <Button
+                                onClick={saveFile}
+                                variant={selectedFile.isModified ? "contained" : "outlined"}
+                                color={selectedFile.isModified ? "success" : "inherit"}
+                                disabled={!selectedFile.isModified}
+                                sx={{ mr: 2 }}
+                            >
+                                保存
+                            </Button>
+                        <Tooltip title="新規ファイル作成">
+                            <IconButton 
+                                onClick={handleAddFile}
+                                size="small"
+                                sx={{ mr: 1 }}
+                            >
+                                <AddIcon />
+                            </IconButton>
+                        </Tooltip>
+                            <Tooltip title="ファイル削除">
+                                <IconButton 
+                                    onClick={handleDeleteFile}
+                                    size="small"
+                                    color="error"
+                                    disabled={!selectedFile.filename}
+                                >
+                                    <DeleteIcon />
+                                </IconButton>
+                            </Tooltip>
+                    </>
                 )}
             </Box>
 
