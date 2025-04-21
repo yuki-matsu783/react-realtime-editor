@@ -44,6 +44,8 @@ const getLanguageFromFileName = (filename: string): string => {
         tsx: 'typescript',
         html: 'html',
         css: 'css',
+        scss: 'css',
+        sass: 'css',
         json: 'json',
         md: 'markdown',
         py: 'python',
@@ -163,7 +165,11 @@ export default function FileExplorer() {
 
     const loadFile = async (path: string) => {
         try {
-            const entry = fileEntries[path];
+            const entry = findEntryByPath(fileEntries, path); // ネストされたファイルにも対応
+            if (!entry) {
+                log(`❌ ファイルが見つかりません: ${path}`);
+                return;
+            }
             if (!entry || entry.type !== "file") return;
 
             const file = await entry.handle.getFile();
@@ -185,7 +191,8 @@ export default function FileExplorer() {
         try {
             if (!selectedFile.filename || !fileEntries[selectedFile.filename]) return;
 
-            const entry = fileEntries[selectedFile.filename];
+            const entry = findEntryByPath(fileEntries, selectedFile.filename);
+            if (!entry || entry.type !== "file") return;
             const writable = await entry.handle.createWritable();
             await writable.write(selectedFile.code);
             await writable.close();
