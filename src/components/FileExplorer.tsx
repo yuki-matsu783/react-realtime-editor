@@ -70,7 +70,7 @@ const getLanguageFromFileName = (filename: string): string => {
 };
 
 export default function FileExplorer() {
-    const { fileEntries, setFileEntries, selectedFile, setSelectedFile } = useFileExplorer();
+    const { fileEntries, setFileEntries, selectedFile, setSelectedFile, editedFiles, setEditedFiles } = useFileExplorer();
     const [logs, setLogs] = useState<string[]>([]);
     const [treeSize, setTreeSize] = useState({ width: 0, height: 0 });
     const treeContainerRef = useRef<HTMLDivElement>(null);
@@ -104,10 +104,21 @@ export default function FileExplorer() {
     };
 
     const handleEditorChange = (value: string | undefined) => {
+        const newCode = value || "";
         setSelectedFile({
             ...selectedFile,
-            code: value || "",
+            code: newCode,
             isModified: true,
+        });
+        
+        // 編集情報を保存
+        setEditedFiles({
+            ...editedFiles,
+            [selectedFile.filename]: {
+                code: newCode,
+                language: selectedFile.language,
+                isModified: true,
+            },
         });
     };
 
@@ -165,7 +176,18 @@ export default function FileExplorer() {
 
     const loadFile = async (path: string) => {
         try {
-            const entry = findEntryByPath(fileEntries, path); // ネストされたファイルにも対応
+            // 既に編集情報がある場合はそれを使用
+            const editedFile = editedFiles[path];
+            if (editedFile) {
+                setSelectedFile({
+                    filename: path,
+                    ...editedFile,
+                });
+                log(`📄 ${path} を編集中の状態から復元しました`);
+                return;
+            }
+
+            const entry = findEntryByPath(fileEntries, path);
             if (!entry) {
                 log(`❌ ファイルが見つかりません: ${path}`);
                 return;
@@ -220,6 +242,15 @@ export default function FileExplorer() {
                 console.log('書き込みストリームのクローズ完了');
         
                 setSelectedFile({ ...selectedFile, isModified: false });
+                // 保存成功後、編集情報を更新
+                setEditedFiles({
+                    ...editedFiles,
+                    [selectedFile.filename]: {
+                        code: selectedFile.code,
+                        language: selectedFile.language,
+                        isModified: false,
+                    },
+                });
                 log(`💾 ${selectedFile.filename} を保存しました (${selectedFile.code.length}文字)`);
                 console.log('保存処理完了');
             } catch (writeError: any) {

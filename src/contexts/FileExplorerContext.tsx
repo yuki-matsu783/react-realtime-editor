@@ -23,6 +23,17 @@ interface FileExplorerContextType {
         language: string;
         isModified: boolean;
     }) => void;
+    // 編集中のファイル情報を保持するための新しいstate
+    editedFiles: Record<string, {
+        code: string;
+        language: string;
+        isModified: boolean;
+    }>;
+    setEditedFiles: (files: Record<string, {
+        code: string;
+        language: string;
+        isModified: boolean;
+    }>) => void;
 }
 
 const FileExplorerContext = createContext<FileExplorerContextType | undefined>(undefined);
@@ -35,13 +46,20 @@ export function FileExplorerProvider({ children }: { children: ReactNode }) {
         language: 'plaintext',
         isModified: false
     });
+    const [editedFiles, setEditedFiles] = useState<Record<string, {
+        code: string;
+        language: string;
+        isModified: boolean;
+    }>>({});
 
     return (
         <FileExplorerContext.Provider value={{
             fileEntries,
             setFileEntries,
             selectedFile,
-            setSelectedFile
+            setSelectedFile,
+            editedFiles,
+            setEditedFiles
         }}>
             {children}
         </FileExplorerContext.Provider>
