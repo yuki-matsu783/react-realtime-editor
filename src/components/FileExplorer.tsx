@@ -29,13 +29,60 @@ const isTextFile = async (fileHandle: any) => {
     }
 };
 
+// ファイル拡張子から言語を特定する関数
+const getLanguageFromFileName = (filename: string): string => {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const languageMap: Record<string, string> = {
+        'js': 'javascript',
+        'jsx': 'javascript',
+        'ts': 'typescript',
+        'tsx': 'typescript',
+        'html': 'html',
+        'css': 'css',
+        'json': 'json',
+        'md': 'markdown',
+        'py': 'python',
+        'java': 'java',
+        'c': 'c',
+        'cpp': 'cpp',
+        'h': 'cpp',
+        'hpp': 'cpp',
+        'rs': 'rust',
+        'go': 'go',
+        'rb': 'ruby',
+        'php': 'php',
+        'sql': 'sql',
+        'yaml': 'yaml',
+        'yml': 'yaml',
+        'xml': 'xml',
+        'sh': 'shell',
+        'bash': 'shell',
+        'zsh': 'shell',
+    };
+    return languageMap[ext] || 'plaintext';
+};
+
 export default function LLMFileEditor() {
     const [fileEntries, setFileEntries] = useState<Record<string, FileEntry>>({});
     const [filename, setFilename] = useState<string>("");
     const [code, setCode] = useState<string>("");
+    const [language, setLanguage] = useState<string>("plaintext");
     const [logs, setLogs] = useState<string[]>([]);
 
     const log = (msg: string) => setLogs((prev) => [...prev, msg]);
+
+    // エディタが読み込まれる前の設定
+    const handleEditorBeforeMount = (monaco: any) => {
+        // 全ての言語でシンタックスチェックを無効化
+        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: true,
+            noSyntaxValidation: true,
+        });
+        monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: true,
+            noSyntaxValidation: true,
+        });
+    };
 
     const scanDirectory = async (dirHandle: any, path = ""): Promise<Record<string, FileEntry>> => {
         const entries: Record<string, FileEntry> = {};
@@ -90,6 +137,7 @@ export default function LLMFileEditor() {
 
             setFilename(path);
             setCode(text);
+            setLanguage(getLanguageFromFileName(path));
             log(`📄 ${path} を読み込みました (${text.length}文字)`);
         } catch (e: any) {
             log(`❌ ファイル読み込みエラー: ${e.message}`);
@@ -160,10 +208,18 @@ export default function LLMFileEditor() {
                         <Editor
                             height="75vh"
                             width="100%"
-                            defaultLanguage="typescript"
+                            language={language}
                             value={code}
                             onChange={(value) => setCode(value || "")}
                             theme="vs-dark"
+                            beforeMount={handleEditorBeforeMount}
+                            options={{
+                                minimap: { enabled: false },
+                                scrollBeyondLastLine: false,
+                                formatOnPaste: true,
+                                formatOnType: true,
+                                renderValidationDecorations: "off"
+                            }}
                         />
                     </div>
 
