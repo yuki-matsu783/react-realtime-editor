@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { Tree } from "react-arborist";
+import { Button, Box } from "@mui/material";
 import { useFileExplorer } from "../contexts/FileExplorerContext";
 
 declare global {
@@ -69,6 +70,23 @@ const getLanguageFromFileName = (filename: string): string => {
 export default function FileExplorer() {
     const { fileEntries, setFileEntries, selectedFile, setSelectedFile } = useFileExplorer();
     const [logs, setLogs] = useState<string[]>([]);
+    const [treeSize, setTreeSize] = useState({ width: 0, height: 0 });
+    const treeContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const updateTreeSize = () => {
+            if (treeContainerRef.current) {
+                setTreeSize({
+                    width: treeContainerRef.current.clientWidth,
+                    height: treeContainerRef.current.clientHeight
+                });
+            }
+        };
+
+        updateTreeSize();
+        window.addEventListener('resize', updateTreeSize);
+        return () => window.removeEventListener('resize', updateTreeSize);
+    }, []);
 
     const log = (msg: string) => setLogs((prev) => [...prev, msg]);
 
@@ -204,37 +222,46 @@ export default function FileExplorer() {
     };
 
     return (
-        <div className="h-screen flex flex-col">
-            <div className="flex gap-2 p-4 border-b">
-                <button
+        <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                <Button
+                    variant="contained"
                     onClick={handleDirectoryPick}
-                    className="bg-blue-600 text-white px-4 py-2 rounded"
+                    sx={{ mr: 2 }}
                 >
                     ディレクトリを選択
-                </button>
+                </Button>
                 {selectedFile.filename && (
-                    <button
+                    <Button
                         onClick={saveFile}
-                        className={`px-4 py-2 rounded ${
-                            selectedFile.isModified
-                                ? "bg-green-600 text-white"
-                                : "bg-gray-300 text-gray-600"
-                        }`}
+                        variant={selectedFile.isModified ? "contained" : "outlined"}
+                        color={selectedFile.isModified ? "success" : "inherit"}
                         disabled={!selectedFile.isModified}
                     >
                         保存
-                    </button>
+                    </Button>
                 )}
-            </div>
+            </Box>
 
-            <div className="flex flex-1 overflow-hidden">
-                <div className="w-64 border-r overflow-y-auto p-2">
+            <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                <Box 
+                    ref={treeContainerRef}
+                    sx={{ 
+                        width: '25%', 
+                        borderRight: 1, 
+                        borderColor: 'divider', 
+                        p: 2, 
+                        overflowY: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column'
+                    }}
+                >
                     {Object.keys(fileEntries).length > 0 && (
                         <Tree
                             data={convertToTreeData(fileEntries)}
                             openByDefault={false}
-                            width={240}
-                            height={600}
+                            width={treeSize.width}
+                            height={treeSize.height}
                             onActivate={(node) => {
                                 const { type } = node.data;
                                 if (type === "directory") {
@@ -258,19 +285,19 @@ export default function FileExplorer() {
                             )}
                         </Tree>
                     )}
-                </div>
+                </Box>
 
-                <div className="flex-1 flex flex-col p-4">
+                <Box sx={{ width: '75%', p: 2, display: 'flex', flexDirection: 'column' }}>
                     {selectedFile.filename && (
-                        <div className="text-sm mb-2">
+                        <Box sx={{ mb: 2, typography: 'body2' }}>
                             📄 現在のファイル: {selectedFile.filename} ({selectedFile.code.length}文字)
                             {selectedFile.isModified && (
-                                <span className="text-yellow-600 ml-2">●</span>
+                                <Box component="span" sx={{ ml: 1, color: 'warning.main' }}>●</Box>
                             )}
-                        </div>
+                        </Box>
                     )}
 
-                    <div className="flex-1">
+                    <Box sx={{ flex: 1 }}>
                         <Editor
                             height="75vh"
                             width="100%"
@@ -287,15 +314,15 @@ export default function FileExplorer() {
                                 renderValidationDecorations: "off",
                             }}
                         />
-                    </div>
+                    </Box>
 
-                    <div className="bg-gray-100 text-sm p-2 h-32 overflow-y-auto mt-4">
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', height: '32vh', overflowY: 'auto' }}>
                         {logs.map((line, i) => (
-                            <div key={i}>{line}</div>
+                            <Box key={i} sx={{ typography: 'body2' }}>{line}</Box>
                         ))}
-                    </div>
-                </div>
-            </div>
-        </div>
+                    </Box>
+                </Box>
+            </Box>
+        </Box>
     );
 }
