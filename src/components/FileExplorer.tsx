@@ -461,6 +461,91 @@ export default function FileExplorer() {
         }
     };
 
+    const handleMove = async (dragIds: string[], parentId: string | null, index: number) => {
+        log(`🔍 onMove triggered: dragIds=${JSON.stringify(dragIds)}, parentId=${parentId}, index=${index}`);
+        try {
+            const dragId = dragIds[0];
+            const sourceEntry = findEntryByPath(fileEntries, dragId);
+            if (!sourceEntry || sourceEntry.type !== 'file') {
+                log(`❌ 移動元のファイルが見つかりません: ${dragId}`);
+                return;
+            }
+    
+            const targetEntry = parentId ? findEntryByPath(fileEntries, parentId) : null;
+            if (parentId && (!targetEntry || targetEntry.type !== 'directory')) {
+                log(`❌ 移動先のディレクトリが見つかりません: ${parentId}`);
+                return;
+            }
+    
+            const newName = sourceEntry.name;
+            const newPath = parentId ? `${parentId}/${newName}` : newName;
+            if (newPath === dragId) return;
+    
+            // ファイル内容の読み取り
+            const sourceFile = await sourceEntry.handle.getFile();
+            const content = await sourceFile.text();
+    
+            // 移動先のディレクトリハンドルを取得
+            const targetDirHandle = targetEntry?.handle ?? await window.showDirectoryPicker();
+            const newFileHandle = await targetDirHandle.getFileHandle(newName, { create: true });
+            const writable = await newFileHandle.createWritable();
+            await writable.write(content);
+            await writable.close();
+    
+            // 元のファイルを削除（File System Access API 対応ブラウザのみ）
+            const parentPath = dragId.split('/').slice(0, -1).join('/');
+            const parentDir = findEntryByPath(fileEntries, parentPath);
+            if (parentDir?.handle?.removeEntry) {
+                await parentDir.handle.removeEntry(newName);
+            }
+    
+            // entriesの再構築
+            const cloned = structuredClone(fileEntries);
+    
+            // 元のエントリを削除
+            const deleteEntry = (entries: Record<string, FileEntry>, path: string) => {
+                for (const [key, value] of Object.entries(entries)) {
+                    if (key === path) {
+                        delete entries[key];
+                        return true;
+                    }
+                    if (value.type === 'directory' && value.children) {
+                        if (deleteEntry(value.children, path)) return true;
+                    }
+                }
+                return false;
+            };
+            deleteEntry(cloned, dragId);
+    
+            // 新しい場所に登録
+            const newEntry: FileEntry = {
+                handle: newFileHandle,
+                path: newPath,
+                type: 'file',
+                name: newName,
+            };
+            const target = parentId ? findEntryByPath(cloned, parentId) : null;
+            if (target?.type === 'directory') {
+                if (!target.children) target.children = {};
+                target.children[newName] = newEntry;
+            } else {
+                cloned[newName] = newEntry;
+            }
+    
+            setFileEntries(cloned);
+    
+            if (selectedFile.filename === dragId) {
+                setSelectedFile({ ...selectedFile, filename: newPath });
+            }
+    
+            log(`✅ ファイルを移動しました: ${dragId} → ${newPath}`);
+        } catch (e: any) {
+            log(`❌ ファイル移動エラー: ${e.message}`);
+        }
+    };
+    
+    
+
     return (
         <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
@@ -520,20 +605,20 @@ export default function FileExplorer() {
                 >
                     {Object.keys(fileEntries).length > 0 && (
                         <Tree
-                            data={convertToTreeData(fileEntries)}
-                            openByDefault={false}
-                            width={treeSize.width}
-                            height={treeSize.height}
-                            onActivate={(node) => {
-                                const { type } = node.data;
-                                if (type === "directory") {
-                                    node.toggle();
-                                } else {
-                                    handleNodeClick(node.data);
-                                }
-                            }}
-                        >
-                            {({ node, style, dragHandle }) => (
+    data={convertToTreeData(fileEntries)}
+    openByDefault={false}
+    width={treeSize.width}
+    height={treeSize.height}
+    onActivate={(node) => {
+        const { type } = node.data;
+        if (type === "directory") {
+            node.toggle();
+        } else {
+            handleNodeClick(node.data);
+        }
+    }}
+>
+{({ node, style, dragHandle }) => (
                                 <div
                                     style={style}
                                     ref={dragHandle}
