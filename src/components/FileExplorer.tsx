@@ -188,18 +188,47 @@ export default function FileExplorer() {
     };
 
     const saveFile = async () => {
+        console.log('保存開始:', { selectedFile });
         try {
-            if (!selectedFile.filename || !fileEntries[selectedFile.filename]) return;
-
+            if (!selectedFile.filename) {
+                console.error('ファイル名が未指定');
+                log(`❌ ファイル名が指定されていません`);
+                return;
+            }
+    
+            console.log('ファイルエントリを検索:', selectedFile.filename);
             const entry = findEntryByPath(fileEntries, selectedFile.filename);
-            if (!entry || entry.type !== "file") return;
-            const writable = await entry.handle.createWritable();
-            await writable.write(selectedFile.code);
-            await writable.close();
+            console.log('検索結果:', { entry });
 
-            setSelectedFile({ ...selectedFile, isModified: false });
-            log(`💾 ${selectedFile.filename} を保存しました`);
+            if (!entry || entry.type !== "file") {
+                console.error('保存対象が見つからない:', { entry });
+                log(`❌ 保存対象が見つかりません: ${selectedFile.filename}`);
+                return;
+            }
+    
+            try {
+                console.log('書き込み準備開始');
+                const writable = await entry.handle.createWritable();
+                console.log('書き込みストリーム作成完了');
+
+                console.log('ファイル書き込み開始:', { length: selectedFile.code.length });
+                await writable.write(selectedFile.code);
+                console.log('ファイル書き込み完了');
+
+                console.log('書き込みストリームのクローズ開始');
+                await writable.close();
+                console.log('書き込みストリームのクローズ完了');
+        
+                setSelectedFile({ ...selectedFile, isModified: false });
+                log(`💾 ${selectedFile.filename} を保存しました (${selectedFile.code.length}文字)`);
+                console.log('保存処理完了');
+            } catch (writeError: any) {
+                console.error('ファイル書き込みエラー:', writeError);
+                log(`❌ ファイル書き込みエラー: ${writeError.message}`);
+                throw writeError;
+            }
         } catch (e: any) {
+            console.error('保存エラー:', e);
             log(`❌ 保存エラー: ${e.message}`);
         }
     };
@@ -212,12 +241,30 @@ export default function FileExplorer() {
                 type: entry.type,
             };
             if (entry.type === "directory" && entry.children) {
-                node.children = Object.values(entry.children).map(buildTree);
+                // ディレクトリの子要素もソート
+                node.children = Object.values(entry.children)
+                    .sort((a, b) => {
+                        // まずディレクトリとファイルで分ける
+                        if (a.type !== b.type) {
+                            return a.type === "directory" ? -1 : 1;
+                        }
+                        // 同じタイプ同士なら名前でソート
+                        return a.name.localeCompare(b.name);
+                    })
+                    .map(buildTree);
             }
             return node;
         };
+        
+        // ルートレベルのエントリをソート
         return Object.values(entries)
             .filter((entry) => !entry.path.includes("/"))
+            .sort((a, b) => {
+                if (a.type !== b.type) {
+                    return a.type === "directory" ? -1 : 1;
+                }
+                return a.name.localeCompare(b.name);
+            })
             .map(buildTree);
     };
 
@@ -319,6 +366,36 @@ export default function FileExplorer() {
                                 formatOnPaste: true,
                                 formatOnType: true,
                                 renderValidationDecorations: "off",
+                                // キーボードショートカットを有効化
+                                quickSuggestions: true,
+                                // 基本的なエディターコマンドを有効化
+                                autoClosingBrackets: 'always',
+                                autoClosingQuotes: 'always',
+                                // カスタムキーバインディングを設定
+                                selectOnLineNumbers: true,
+                                roundedSelection: false,
+                                readOnly: false,
+                            }}
+                            onMount={(editor, monaco) => {
+                                // キーボードショートカットの設定
+                                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, (e) => {
+                                    // ブラウザのデフォルトの保存動作を防ぐ
+                                    e?.preventDefault();
+                                    if (selectedFile.isModified) {
+                                        saveFile();
+                                    }
+                                });
+                                
+                                // 標準的なキーバインディングを有効化
+                                editor.createContextKey('inEditorContext', true);
+
+                                // エディターにフォーカスがある時のキーイベントをキャプチャ
+                                editor.onKeyDown((e) => {
+                                    if ((e.ctrlKey || e.metaKey) && e.keyCode === monaco.KeyCode.KeyS) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }
+                                });
                             }}
                         />
                     </Box>
